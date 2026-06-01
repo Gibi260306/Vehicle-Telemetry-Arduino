@@ -5,6 +5,10 @@
 #define RED   3
 #define BTN   2
 
+bool POT_FAULT = false;
+bool STICK_FAULT = false;
+bool SONIC_FAULT = false;
+
 LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
 
 bool RUN         = false;
@@ -18,10 +22,17 @@ bool     btnLastStable = HIGH;
 bool     btnReading    = HIGH;
 unsigned long btnLastChange = 0;
 const unsigned long DEBOUNCE_MS = 50;
+unsigned long Timer = 0;
 
 #define TRIG_PIN 5
 #define ECHO_PIN 4
 SR04 sr04 = SR04(ECHO_PIN, TRIG_PIN);
+
+const float MAX_SPEED = 100.0;
+const float MIN_SPEED = 0.0;
+const float ACCELERATION = 5.0;
+const float DECELERATION = 8.0;
+static float Car_Speed = 0.0;
 
 void setup()
 {
@@ -31,6 +42,7 @@ void setup()
 
   Serial.begin(9600);
   lcd.begin(16, 2);
+  Timer = millis();
 }
 
 void loop()
@@ -43,7 +55,7 @@ void loop()
   }
   if ((millis() - btnLastChange) >= DEBOUNCE_MS && reading != btnLastStable) {
     btnLastStable = reading;
-    if (btnLastStable == LOW) {       // LOW = pressed (INPUT_PULLUP)
+    if (btnLastStable == LOW) {
       RUN_UPDATE   = false;
       FAULT_UPDATE = false;
       STOP_UPDATE  = false;
@@ -83,7 +95,6 @@ void loop()
 
     digitalWrite(RED, LOW);
     digitalWrite(GREEN, HIGH);
-
     if (!RUN_UPDATE)
     {
       lcd.clear();
@@ -93,14 +104,60 @@ void loop()
       STOP_UPDATE = false;
     }
 
+    // Read inputs
     int Pot = analogRead(A0);
     int Vrx = analogRead(A1);
     int Vry = analogRead(A2);
 
+    // Check pot fault
+    if(Pot < 0 || Pot > 1023)
+    {
+      POT_FAULT = true;
+    }
+
+    // Calculate target speed
+    float target_speed = (float)map(Pot, 0, 1023, MIN_SPEED, MAX_SPEED);
+
+    // Update car speed smoothly
+    if(Car_Speed != target_speed)
+    {
+      unsigned long current_time = millis();
+      unsigned long dif = current_time - Timer;
+      Timer = current_time;
+
+      if(dif >= 50)  // Update every 50ms
+      {
+        float dt_sec = dif / 1000.0;  // Convert to seconds
+
+        if(Car_Speed < target_speed)  // ACCELERATION
+        {
+          Car_Speed += ACCELERATION * dt_sec;
+          if(Car_Speed > target_speed)
+          {
+            Car_Speed = target_speed;
+          }
+        }
+        else if(Car_Speed > target_speed)  // DECELERATION
+        {
+          Car_Speed -= DECELERATION * dt_sec;  // Now works correctly
+          if(Car_Speed < target_speed)
+          {
+            Car_Speed = target_speed;
+          }
+        }
+      }
+    }
+
+    // Debug output
+    Serial.print("Pot: ");
     Serial.print(Pot);
-    Serial.print(", ");
+    Serial.print(" | Target: ");
+    Serial.print(target_speed);
+    Serial.print(" | Speed: ");
+    Serial.print(Car_Speed);
+    Serial.print(" | Vrx: ");
     Serial.print(Vrx);
-    Serial.print(", ");
+    Serial.print(" | Vry: ");
     Serial.println(Vry);
   }
   else
