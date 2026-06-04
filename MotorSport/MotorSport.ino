@@ -1,15 +1,16 @@
-#include <LiquidCrystal.h>
+#include <Adafruit_ST7735.h>
+#include <Adafruit_GFX.h>
 #include "SR04.h"
 
-#define GREEN 6
-#define RED   3
 #define BTN   2
 
-bool POT_FAULT = false;
+#define TFT_CS  7
+#define TFT_RST 5
+#define TFT_DC  6
+
+bool POT_FAULT   = false;
 bool STICK_FAULT = false;
 bool SONIC_FAULT = false;
-
-LiquidCrystal lcd(7, 8, 9, 10, 11, 12);
 
 bool RUN         = false;
 bool FAULT       = false;
@@ -18,31 +19,82 @@ bool FAULT_UPDATE = false;
 bool STOP_UPDATE  = false;
 
 // Debounce state
-bool     btnLastStable = HIGH;
-bool     btnReading    = HIGH;
+bool          btnLastStable = HIGH;
+bool          btnReading    = HIGH;
 unsigned long btnLastChange = 0;
 const unsigned long DEBOUNCE_MS = 50;
 unsigned long Timer = 0;
 
-#define TRIG_PIN 5
-#define ECHO_PIN 4
+#define TRIG_PIN 4
+#define ECHO_PIN 3
 SR04 sr04 = SR04(ECHO_PIN, TRIG_PIN);
+Adafruit_ST7735 tft = Adafruit_ST7735(TFT_CS, TFT_DC, TFT_RST);
 
-const float MAX_SPEED = 100.0;
-const float MIN_SPEED = 0.0;
+const float MAX_SPEED   = 100.0;
+const float MIN_SPEED   = 0.0;
 const float ACCELERATION = 5.0;
 const float DECELERATION = 8.0;
-static float Car_Speed = 0.0;
+static float Car_Speed  = 0.0;
+
+void tftShowFault()
+{
+  tft.fillScreen(ST7735_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(ST7735_RED);
+  tft.setCursor(10, 55);
+  tft.print("FAULT");
+}
+
+void tftShowRunning()
+{
+  tft.fillScreen(ST7735_BLACK);
+  tft.setTextSize(1);
+  tft.setTextColor(ST7735_GREEN);
+  tft.setCursor(10, 10);
+  tft.print("Running...");
+}
+
+void tftShowSpeed(float speed)
+{
+  tft.fillRect(0, 30, 128, 20, ST7735_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(ST7735_WHITE);
+  tft.setCursor(10, 30);
+  tft.print((int)speed);
+  tft.print(" km/h");
+}
+
+void tftShowStopped()
+{
+  tft.fillScreen(ST7735_BLACK);
+  tft.setTextSize(2);
+  tft.setTextColor(ST7735_WHITE);
+  tft.setCursor(10, 55);
+  tft.print("Stopped");
+}
 
 void setup()
 {
   pinMode(BTN, INPUT_PULLUP);
-  pinMode(RED, OUTPUT);
-  pinMode(GREEN, OUTPUT);
+
+  // Manual hardware reset before init — fixes random pixels on most ST7735 clones
+  pinMode(TFT_RST, OUTPUT);
+  digitalWrite(TFT_RST, HIGH);
+  delay(10);
+  digitalWrite(TFT_RST, LOW);
+  delay(20);
+  digitalWrite(TFT_RST, HIGH);
+  delay(150);
 
   Serial.begin(9600);
-  lcd.begin(16, 2);
   Timer = millis();
+
+  // Try these init types in order if display still shows garbage:
+  // INITR_BLACKTAB, INITR_GREENTAB, INITR_144GREENTAB, INITR_GREENTAB128
+  tft.initR(INITR_BLACKTAB);
+  tft.setRotation(0);
+  tftShowStopped();
+  btnLastChange = millis();
 }
 
 void loop()
@@ -80,26 +132,18 @@ void loop()
 
     if (FAULT)
     {
-      digitalWrite(RED, HIGH);
-      digitalWrite(GREEN, LOW);
       if (!FAULT_UPDATE)
       {
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print("FAULT");
+        tftShowFault();
         FAULT_UPDATE = true;
         RUN_UPDATE   = false;
       }
       return;
     }
 
-    digitalWrite(RED, LOW);
-    digitalWrite(GREEN, HIGH);
     if (!RUN_UPDATE)
     {
-      lcd.clear();
-      lcd.setCursor(0, 0);
-      lcd.print("Running...");
+      tftShowRunning();
       RUN_UPDATE  = true;
       STOP_UPDATE = false;
     }
@@ -110,7 +154,7 @@ void loop()
     int Vry = analogRead(A2);
 
     // Check pot fault
-    if(Pot < 0 || Pot > 1023)
+    if (Pot < 0 || Pot > 1023)
     {
       POT_FAULT = true;
     }
@@ -119,36 +163,30 @@ void loop()
     float target_speed = (float)map(Pot, 0, 1023, MIN_SPEED, MAX_SPEED);
 
     // Update car speed smoothly
-    if(Car_Speed != target_speed)
+    if (Car_Speed != target_speed)
     {
       unsigned long current_time = millis();
       unsigned long dif = current_time - Timer;
       Timer = current_time;
 
-      if(dif >= 50)  // Update every 50ms
+      if (dif >= 50)
       {
-        float dt_sec = dif / 1000.0;  // Convert to seconds
+        float dt_sec = dif / 1000.0;
 
-        if(Car_Speed < target_speed)  // ACCELERATION
+        if (Car_Speed < target_speed)
         {
           Car_Speed += ACCELERATION * dt_sec;
-          if(Car_Speed > target_speed)
-          {
-            Car_Speed = target_speed;
-          }
+          if (Car_Speed > target_speed) Car_Speed = target_speed;
         }
-        else if(Car_Speed > target_speed)  // DECELERATION
+        else if (Car_Speed > target_speed)
         {
-          Car_Speed -= DECELERATION * dt_sec;  // Now works correctly
-          if(Car_Speed < target_speed)
-          {
-            Car_Speed = target_speed;
-          }
+          Car_Speed -= DECELERATION * dt_sec;
+          if (Car_Speed < target_speed) Car_Speed = target_speed;
         }
+        tftShowSpeed(Car_Speed);
       }
     }
 
-    // Debug output
     Serial.print("Pot: ");
     Serial.print(Pot);
     Serial.print(" | Target: ");
@@ -164,23 +202,17 @@ void loop()
   {
     if (FAULT)
     {
-      digitalWrite(RED, HIGH);
-      digitalWrite(GREEN, LOW);
       if (!FAULT_UPDATE)
       {
-        lcd.clear();
-        lcd.setCursor(0, 0);
-        lcd.print("FAULT");
+        tftShowFault();
         FAULT_UPDATE = true;
       }
     }
     else
     {
-      digitalWrite(RED, LOW);
-      digitalWrite(GREEN, LOW);
       if (!STOP_UPDATE)
       {
-        lcd.clear();
+        tftShowStopped();
         STOP_UPDATE = true;
       }
     }
