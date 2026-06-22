@@ -203,7 +203,6 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(BTN), buttonISR, FALLING);
 
   Serial.begin(9600);
-
   Timer = millis();
 
   tft.initR(INITR_BLACKTAB);
@@ -243,7 +242,7 @@ void loop()
 
       return;
     }
-
+  
     int Pot = analogRead(A0);
     int Vrx = analogRead(A1);
     int Vry = analogRead(A2);
@@ -304,16 +303,17 @@ void loop()
       Wheel_angle = map(Vry, 0, 1023, -35, 35);
     }
 
-    Serial.print("Pot: ");
     Serial.print(Pot);
-    Serial.print(" | Target: ");
+    Serial.print(" , ");
     Serial.print(target_speed);
-    Serial.print(" | Speed: ");
+    Serial.print(" , ");
     Serial.print(Car_Speed);
-    Serial.print(" | Vrx: ");
+    Serial.print(" , ");
     Serial.print(Vrx);
-    Serial.print(" | Vry: ");
-    Serial.println(Vry);
+    Serial.print(" , ");
+    Serial.print(Vry);
+    Serial.print(" , ");
+    Serial.println(Wheel_angle);
 
     if (millis() - lastTFTUpdate >= TFT_UPDATE_MS)
     {
