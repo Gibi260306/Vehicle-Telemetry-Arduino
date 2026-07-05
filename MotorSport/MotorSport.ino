@@ -99,67 +99,71 @@ void drawRunScreen()
   tft.setTextColor(ST7735_WHITE, ST7735_BLACK);
 
   tft.setCursor(5, 5);
-  tft.print("Pot:");
+  tft.print("Throttle:");
 
-  tft.setCursor(5, 25);
-  tft.print("Target:");
+  // Bar for Throttle
+  tft.drawRect(5, 16, 70, 7, ST7735_WHITE);
 
-  // Bar between Target and Speed
-  tft.drawRect(5, 36, 70, 7, ST7735_WHITE);
+  tft.setCursor(5, 30);
+  tft.print("Brake:");
 
-  tft.setCursor(5, 45);
-  tft.print("Speed:");
+  // Bar for Brake
+  tft.drawRect(5, 41, 70, 7, ST7735_WHITE);
 
-  tft.setCursor(5, 65);
+  tft.setCursor(5, 55);
   tft.print("Wheel Angle:");
 
-  tft.setCursor(5, 85);
+  tft.setCursor(5, 75);
   tft.print("Dist:");
 }
 
-void updateTFT(int Pot, float target_speed, float Car_Speed, int Wheel_angle, long Distance)
+void updateTFT(int Throttle, int Brake, int Wheel_angle, long Distance)
 {
   tft.setTextSize(1);
   tft.setTextColor(ST7735_WHITE, ST7735_BLACK);
 
   // Clear only the old number areas
-  tft.fillRect(60, 5,  65, 10, ST7735_BLACK);   // Pot
-  tft.fillRect(60, 25, 65, 10, ST7735_BLACK);   // Target
-  tft.fillRect(60, 45, 65, 10, ST7735_BLACK);   // Speed
-  tft.fillRect(80, 65, 45, 10, ST7735_BLACK);   // Wheel angle
-  tft.fillRect(60, 85, 65, 10, ST7735_BLACK);   // Distance
-  tft.fillRect(5, 105, 120, 10, ST7735_BLACK);   // Distance
+  tft.fillRect(70, 5,  55, 10, ST7735_BLACK);   // Throttle value
+  tft.fillRect(70, 30, 55, 10, ST7735_BLACK);   // Brake value
+  tft.fillRect(80, 55, 45, 10, ST7735_BLACK);   // Wheel angle
+  tft.fillRect(60, 75, 65, 10, ST7735_BLACK);   // Distance
+  tft.fillRect(5, 95, 120, 10, ST7735_BLACK);   // Obstacle warning
 
   // Redraw only the numbers
-  tft.setCursor(60, 5);
-  tft.print(Pot);
+  tft.setCursor(70, 5);
+  tft.print(Throttle);
 
-  tft.setCursor(60, 25);
-  tft.print(target_speed, 1);
+  // Throttle bar (0-1023 raw ADC range mapped to bar width)
+  int throttleBarWidth = map(Throttle, 0, 1023, 0, 68);
+  if (throttleBarWidth < 0) throttleBarWidth = 0;
+  if (throttleBarWidth > 68) throttleBarWidth = 68;
 
-  // Throttle bar between Target and Speed
-  int barWidth = (int)((target_speed / 100.0) * 68.0);
+  tft.drawRect(5, 16, 70, 7, ST7735_WHITE);
+  tft.fillRect(6, 17, 68, 5, ST7735_BLACK);
+  tft.fillRect(6, 17, throttleBarWidth, 5, ST7735_WHITE);
 
-  if (barWidth < 0) barWidth = 0;
-  if (barWidth > 68) barWidth = 68;
+  tft.setCursor(70, 30);
+  tft.print(Brake);
 
-  tft.drawRect(5, 36, 70, 7, ST7735_WHITE);
-  tft.fillRect(6, 37, 68, 5, ST7735_BLACK);
-  tft.fillRect(6, 37, barWidth, 5, ST7735_WHITE);
+  // Brake bar (0-1023 raw ADC range mapped to bar width)
+  int brakeBarWidth = map(Brake, 0, 1023, 0, 68);
+  if (brakeBarWidth < 0) brakeBarWidth = 0;
+  if (brakeBarWidth > 68) brakeBarWidth = 68;
 
-  tft.setCursor(60, 45);
-  tft.print(Car_Speed, 1);
+  tft.drawRect(5, 41, 70, 7, ST7735_WHITE);
+  tft.fillRect(6, 42, 68, 5, ST7735_BLACK);
+  tft.fillRect(6, 42, brakeBarWidth, 5, ST7735_WHITE);
 
-  tft.setCursor(80, 65);
+  tft.setCursor(80, 55);
   tft.print(Wheel_angle);
   tft.print(" deg");
 
-  tft.setCursor(60, 85);
+  tft.setCursor(60, 75);
   tft.print(Distance);
 
   if(Distance < 20)
   {
-    tft.setCursor(5,  105);
+    tft.setCursor(5,  95);
     tft.print("Obstacle Imminent");
   }
 }
@@ -243,54 +247,10 @@ void loop()
       return;
     }
   
-    int Pot = analogRead(A0);
-    int Vrx = analogRead(A1);
-    int Vry = analogRead(A2);
-
-    if(Pot < 50)
-    {
-      target_speed = MIN_SPEED;
-    }
-    else if(Pot > 973)
-    {
-      target_speed = MAX_SPEED;
-    }
-    else
-    {
-      target_speed = (float)map(Pot, 50, 973, MIN_SPEED, MAX_SPEED);
-    } 
-
-    if (Car_Speed != target_speed)
-    {
-      unsigned long current_time = millis();
-      unsigned long dif = current_time - Timer;
-
-      if (dif >= 50)
-      {
-        Timer = current_time;
-
-        float dt_sec = dif / 1000.0;
-
-        if (Car_Speed < target_speed)
-        {
-          Car_Speed += ACCELERATION * dt_sec;
-
-          if (Car_Speed > target_speed)
-          {
-            Car_Speed = target_speed;
-          }
-        }
-        else if (Car_Speed > target_speed)
-        {
-          Car_Speed -= DECELERATION * dt_sec;
-
-          if (Car_Speed < target_speed)
-          {
-            Car_Speed = target_speed;
-          }
-        }
-      }
-    }
+    int Throttle = analogRead(A0);
+    int Brake = analogRead(A1);
+    int Vrx = analogRead(A2);
+    int Vry = analogRead(A3);
 
     int Wheel_angle;
 
@@ -303,22 +263,16 @@ void loop()
       Wheel_angle = map(Vry, 0, 1023, -35, 35);
     }
 
-    Serial.print(Pot);
+    Serial.print(Throttle);
     Serial.print(" , ");
-    Serial.print(target_speed);
-    Serial.print(" , ");
-    Serial.print(Car_Speed);
-    Serial.print(" , ");
-    Serial.print(Vrx);
-    Serial.print(" , ");
-    Serial.print(Vry);
+    Serial.print(Brake);
     Serial.print(" , ");
     Serial.println(Wheel_angle);
 
     if (millis() - lastTFTUpdate >= TFT_UPDATE_MS)
     {
       lastTFTUpdate = millis();
-      updateTFT(Pot, target_speed, Car_Speed, Wheel_angle , Distance);
+      updateTFT(Throttle, Brake, Wheel_angle, Distance);
     }
   }
   else
